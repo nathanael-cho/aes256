@@ -83,6 +83,7 @@ void file_test(char* name) {
     system(diff_command);
 
     free(copy_expected_command);
+    free(copy_encrypted_command);
     free(diff_command);
 }
 
