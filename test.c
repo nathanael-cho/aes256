@@ -39,6 +39,14 @@ void simple_test() {
     dump("Decrypted: ", buffer);
 
     aes256_cleanup(&keys);
+
+    for (uint8_t i = 0; i < sizeof(seed_key);i++) {
+        seed_key[i] = 0;
+    }
+
+    for (uint8_t i = 0; i < sizeof(buffer);i++) {
+        buffer[i] = 0;
+    }
 }
 
 void file_test(char* name) {
@@ -82,12 +90,20 @@ void file_test(char* name) {
 
     system(diff_command);
 
+    for (uint8_t i = 0; i < sizeof(seed_key);i++) {
+        seed_key[i] = 0;
+    }
+
     free(copy_expected_command);
     free(copy_encrypted_command);
     free(diff_command);
 }
 
 int main(int argc, char** argv) {
+    // TODO: Use a password (getpass) + SHA-256 to generate the encryption key.
+    // TODO: Put the password prompt in aes256_decrypt/encrypt_file.
+    // TODO: Modify aes256_decrypt/encrypt_file to no longer take a seed key.
+
     if (argc > 2 && !strcmp(argv[1], "-f")) {
         file_test(argv[2]);
     } else if (argc == 1) {
