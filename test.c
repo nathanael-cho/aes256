@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "aes256.h"
 
@@ -11,7 +12,7 @@ void dump(char* prefix, uint8_t* buffer) {
     printf("\n");
 }
 
-int main (void) {
+void simple_test() {
     aes256_keys keys;
     uint8_t round_key[32];
     uint8_t buffer[16];
@@ -38,6 +39,60 @@ int main (void) {
     dump("Decrypted: ", buffer);
 
     aes256_cleanup(&keys);
+}
 
+void file_test(char* name) {
+    uint8_t seed_key[32];
+    for (uint8_t i = 0; i < sizeof(seed_key);i++) {
+        seed_key[i] = i;
+    }
+
+    char* copy_expected_command = malloc(strlen(name) + 3 + 15 + 1);
+    strcpy(copy_expected_command, "cp ");
+    strcat(copy_expected_command, name);
+    strcat(copy_expected_command, " ./expected.txt");
+
+    char* copy_encrypted_command = malloc(strlen(name) + 3 + 16 + 1);
+    strcpy(copy_encrypted_command, "cp ");
+    strcat(copy_encrypted_command, name);
+    strcat(copy_encrypted_command, " ./encrypted.txt");
+
+    char* diff_command = malloc(strlen(name) + 5 + 15 + 1);
+    strcpy(diff_command, "diff ");
+    strcat(diff_command, name);
+    strcat(diff_command, " ./expected.txt");
+
+    system(copy_expected_command);
+
+    if (aes256_encrypt_file(name, seed_key) < 0) {
+        printf("Encryption of %s failed.\n", name);
+        free(copy_expected_command);
+        free(diff_command);
+        return;
+    }
+
+    system(copy_encrypted_command);
+
+    if (aes256_decrypt_file(name, seed_key) < 0) {
+        printf("Decryption of %s failed.\n", name);
+        free(copy_expected_command);
+        free(diff_command);
+        return;
+    }
+
+    system(diff_command);
+
+    free(copy_expected_command);
+    free(diff_command);
+}
+
+int main(int argc, char** argv) {
+    if (argc > 2 && !strcmp(argv[1], "-f")) {
+        file_test(argv[2]);
+    } else if (argc == 1) {
+        simple_test();
+    } else {
+        printf("Usage: ./test [-f file]\n");
+    }
     return 0;
 }

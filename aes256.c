@@ -1,3 +1,9 @@
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "aes256.h"
 
 //////////////////////
@@ -85,6 +91,12 @@ inline static uint8_t get_sbox_inverse(unsigned char x) {
 /////////////
 // HELPERS //
 /////////////
+
+inline static void general_copy(uint8_t* destination, uint8_t* source, uint8_t length) {
+    for (uint8_t i = 0; i < length; i++) {
+        destination[i] = source[i];
+    }
+}
 
 inline static uint8_t next_round_constant(uint8_t x) {
     uint8_t y = (uint8_t) (x << 1);
@@ -329,4 +341,136 @@ void aes256_decrypt(aes256_keys* keys, uint8_t* buffer) {
     }
 
     aes256_add_round_key(buffer, keys->round_key);
+}
+
+/**
+ * aes256_encrypt_file(name, seed_key)
+ *
+ * Encrypt a file with the given seed key.
+ */
+int aes256_encrypt_file(char* name, uint8_t* seed_key) {
+    int fd = open(name, O_RDWR, 0666);
+    if (fd < 0) {
+        printf("Could not open %s.\n", name);
+        return -1;
+    }
+
+    struct stat metadata;
+    if (fstat(fd, &metadata) < 0) {
+        printf("Could not determine the size of %s.\n", name);
+        close(fd);
+        return -1;
+    }
+    size_t file_size = metadata.st_size;
+
+    uint8_t padding = 16 - (file_size % 16);
+    file_size += padding;
+    if (ftruncate(fd, file_size) < 0) {
+        printf("Could not align file size to a multiple of sixteen.\n");
+        close(fd);
+        return -1;
+    }
+
+    uint8_t* file_data = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (!file_data) {
+        printf("Failed to memory-map %s.\n", name);
+        if (ftruncate(fd, file_size - padding) < 0) {
+            printf("There are %d extra zero bytes at the end of %s.\n", padding, name);
+        }
+        close(fd);
+        return -1;
+    }
+    file_data[file_size - 1] = padding;
+
+    aes256_keys keys;
+
+    uint8_t buffer[16] = {0};
+    for (size_t file_pointer = 0; file_pointer < file_size; file_pointer += 16) {
+        int margin = file_size - file_pointer;
+        int copy_length = margin < 16 ? margin : 16;
+        general_copy(buffer, file_data + file_pointer, copy_length);
+        for (uint8_t i = copy_length; i < 16; i++) {
+            buffer[i] = 0;
+        }
+
+        aes256_initialize(&keys, seed_key);
+        aes256_encrypt(&keys, buffer);
+
+        general_copy(file_data + file_pointer, buffer, copy_length);
+    }
+
+    for (uint8_t i = 0; i < 16; i++) {
+        buffer[i] = 0;
+    }
+    aes256_cleanup(&keys);
+
+    munmap(file_data, file_size);
+    close(fd);
+
+    return 0;
+}
+
+/**
+ * aes256_decrypt_file(name, seed_key)
+ *
+ * Decrypt a file with the given seed key.
+ */
+int aes256_decrypt_file(char* name, uint8_t* seed_key) {
+    int fd = open(name, O_RDWR, 0666);
+    if (fd < 0) {
+        printf("Could not open %s.\n", name);
+        return -1;
+    }
+
+    struct stat metadata;
+    if (fstat(fd, &metadata) < 0) {
+        printf("Could not determine the size of %s.\n", name);
+        close(fd);
+        return -1;
+    }
+    size_t file_size = metadata.st_size;
+    if (file_size % 16) {
+        printf("There was a file size error with the encryption of %s.\n", name);
+        close(fd);
+        return -1;
+    }
+
+    uint8_t* file_data = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (!file_data) {
+        printf("Failed to memory-map %s.\n", name);
+        close(fd);
+        return -1;
+    }
+
+    aes256_keys keys;
+
+    uint8_t buffer[16] = {0};
+    for (size_t file_pointer = 0; file_pointer < file_size; file_pointer += 16) {
+        int margin = file_size - file_pointer;
+        int copy_length = margin < 16 ? margin : 16;
+        general_copy(buffer, file_data + file_pointer, copy_length);
+        for (uint8_t i = copy_length; i < 16; i++) {
+            buffer[i] = 0;
+        }
+
+        aes256_initialize(&keys, seed_key);
+        aes256_decrypt(&keys, buffer);
+
+        general_copy(file_data + file_pointer, buffer, copy_length);
+    }
+
+    for (uint8_t i = 0; i < 16; i++) {
+        buffer[i] = 0;
+    }
+    aes256_cleanup(&keys);
+
+    uint8_t padding = file_data[file_size - 1];
+    if (ftruncate(fd, file_size - padding) < 0) {
+        printf("There are %d extra zero bytes at the end of %s.\n", padding, name);
+    }
+
+    munmap(file_data, file_size);
+    close(fd);
+
+    return 0;
 }

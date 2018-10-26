@@ -2,7 +2,7 @@
 # GENERAL #
 ###########
 
-all: test
+all: clean test
 
 CC = gcc -std=c11 -g -ggdb3
 
@@ -18,4 +18,4 @@ test:
 	$(CC) $(CFLAGS) test.c aes256.c -o $@
 
 clean:
-	rm -rf *.o test *~ test.dSYM/ .deps/
+	rm -rf *.o test *~ test.dSYM/ .deps/ expected.txt encrypted.txt

@@ -22,4 +22,7 @@ void aes256_cleanup(aes256_keys* keys);
 void aes256_encrypt(aes256_keys* keys, uint8_t* buffer);
 void aes256_decrypt(aes256_keys* keys, uint8_t* buffer);
 
+int aes256_encrypt_file(char* name, uint8_t* seed_key);
+int aes256_decrypt_file(char* name, uint8_t* seed_key);
+
 #endif
