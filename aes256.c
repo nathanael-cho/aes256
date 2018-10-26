@@ -1,13 +1,5 @@
 #include "aes256.h"
 
-/**
- * The code is largely taken from the following implementation:
- *     http://www.literatecode.com/get/aes256.c
- *
- * The explanation for everything can be found on Wikipedia:
- *     https://en.wikipedia.org/wiki/Advanced_Encryption_Standard
- */
-
 //////////////////////
 // SUBSTITUTION BOX //
 //////////////////////
@@ -93,13 +85,6 @@ inline static uint8_t get_sbox_inverse(unsigned char x) {
 /////////////
 // HELPERS //
 /////////////
-
-/* static void dump(uint8_t* buffer) { */
-/*     for (uint8_t j = 0; j < 16; j++) { */
-/*         printf("%02x ", buffer[j]); */
-/*     } */
-/*     printf("\n"); */
-/* } */
 
 inline static uint8_t next_round_constant(uint8_t x) {
     uint8_t y = (uint8_t) (x << 1);

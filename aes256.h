@@ -1,7 +1,13 @@
 #ifndef __AES256__
 #define __AES256__
 
-#include <stdio.h>
+/**
+ * The code is largely taken from the following implementation:
+ *     http://www.literatecode.com/get/aes256.c
+ *
+ * The explanation for everything can be found on Wikipedia:
+ *     https://en.wikipedia.org/wiki/Advanced_Encryption_Standard
+ */
 
 #define uint8_t unsigned char
 
