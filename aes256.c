@@ -386,17 +386,12 @@ int aes256_encrypt_file(char* name, uint8_t* seed_key) {
 
     uint8_t buffer[16] = {0};
     for (size_t file_pointer = 0; file_pointer < file_size; file_pointer += 16) {
-        int margin = file_size - file_pointer;
-        int copy_length = margin < 16 ? margin : 16;
-        general_copy(buffer, file_data + file_pointer, copy_length);
-        for (uint8_t i = copy_length; i < 16; i++) {
-            buffer[i] = 0;
-        }
+        general_copy(buffer, file_data + file_pointer, 16);
 
         aes256_initialize(&keys, seed_key);
         aes256_encrypt(&keys, buffer);
 
-        general_copy(file_data + file_pointer, buffer, copy_length);
+        general_copy(file_data + file_pointer, buffer, 16);
     }
 
     for (uint8_t i = 0; i < 16; i++) {
@@ -446,17 +441,12 @@ int aes256_decrypt_file(char* name, uint8_t* seed_key) {
 
     uint8_t buffer[16] = {0};
     for (size_t file_pointer = 0; file_pointer < file_size; file_pointer += 16) {
-        int margin = file_size - file_pointer;
-        int copy_length = margin < 16 ? margin : 16;
-        general_copy(buffer, file_data + file_pointer, copy_length);
-        for (uint8_t i = copy_length; i < 16; i++) {
-            buffer[i] = 0;
-        }
+        general_copy(buffer, file_data + file_pointer, 16);
 
         aes256_initialize(&keys, seed_key);
         aes256_decrypt(&keys, buffer);
 
-        general_copy(file_data + file_pointer, buffer, copy_length);
+        general_copy(file_data + file_pointer, buffer, 16);
     }
 
     for (uint8_t i = 0; i < 16; i++) {
