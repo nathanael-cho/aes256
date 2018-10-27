@@ -1,6 +1,8 @@
-make test
+#!/usr/local/bin/bash
 
-./test
+make simple_test
+./simple_test
+make clean
 
 if ! [ -z "$1" ]; then
     make
@@ -9,6 +11,5 @@ if ! [ -z "$1" ]; then
     cp $1 encrypted.txt
     ./decrypt $1
     diff $1 expected.txt
+    make clean
 fi
-
-make clean

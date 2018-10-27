@@ -7,5 +7,5 @@ decrypt
 decrypt.dSYM/*
 encrypt
 encrypt.dSYM/*
-test
-test.dSYM/*
+simple_test
+simple_test.dSYM/*
