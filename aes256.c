@@ -1,9 +1,11 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "aes256.h"
@@ -95,7 +97,13 @@ inline static uint8_t get_sbox_inverse(unsigned char x) {
 // HELPERS //
 /////////////
 
-inline static void general_copy(uint8_t* destination, uint8_t* source, uint8_t length) {
+static void zero_array(uint8_t* array, uint8_t length) {
+    for (uint8_t i = 0; i < length; i++) {
+        array[i] = 0;
+    }
+}
+
+static void general_copy(uint8_t* destination, uint8_t* source, uint8_t length) {
     for (uint8_t i = 0; i < length; i++) {
         destination[i] = source[i];
     }
@@ -352,7 +360,7 @@ void aes256_decrypt(aes256_keys* keys, uint8_t* buffer) {
  * Encrypt a file with the given seed key.
  */
 int aes256_encrypt_file(char* name) {
-    int fd = open(name, O_RDWR, 0666);
+    int fd = open(name, O_RDWR);
     if (fd < 0) {
         printf("Could not open %s.\n", name);
         return -1;
@@ -393,14 +401,70 @@ int aes256_encrypt_file(char* name) {
         return -1;
     }
 
+    char* backup = malloc(strlen(password) + 1);
+    strcpy(backup, password);
+    zero_array((uint8_t*) password, (uint8_t) strlen(password));
+
+    password = getpass("Enter password again:");
+    if (!password) {
+        printf("Failed to input the password a second time.\n");
+        zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
+        free(backup);
+        munmap(file_data, file_size);
+        close(fd);
+        return -1;
+    }
+    if (strcmp(password, backup)) {
+        printf("The passwords do not match.\n");
+        zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
+        zero_array((uint8_t*) password, (uint8_t) strlen(password));
+        free(backup);
+        munmap(file_data, file_size);
+        close(fd);
+        return -1;
+    }
+    zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
+    free(backup);
+
     uint8_t seed_key[32];
     sha256_context context;
     sha256_initialize(&context);
     sha256_update(&context, (uint8_t*) password, strlen(password));
     sha256_finish(&context, seed_key);
     sha256_clean_context(&context);
-    for (uint8_t i = 0; i < strlen(password); i++) {
-        password[i] = 0;
+    zero_array((uint8_t*) password, (uint8_t) strlen(password));
+
+    char* output_file = malloc(8 + strlen(name) + 1);
+    strcpy(output_file, ".hashes/");
+    strcat(output_file, name);
+    int hash_descriptor = open(output_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (hash_descriptor < 0) {
+        printf("Could not store the password hash's hash.\n");
+        free(output_file);
+        zero_array(seed_key, 32);
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
+    }
+    free(output_file);
+
+    uint8_t hash_hash[32];
+    sha256_initialize(&context);
+    sha256_update(&context, (uint8_t*) seed_key, 32);
+    sha256_finish(&context, hash_hash);
+    sha256_clean_context(&context);
+    ssize_t written = write(hash_descriptor, hash_hash, 32);
+    close(hash_descriptor);
+    zero_array(hash_hash, 32);
+
+    if (written < 32) {
+        printf("Could not write the hash's hash out to disk.\n");
+        zero_array(seed_key, 32);
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
     }
 
     aes256_keys keys;
@@ -415,13 +479,9 @@ int aes256_encrypt_file(char* name) {
         general_copy(file_data + file_pointer, buffer, 16);
     }
 
-    for (uint8_t i = 0; i < 16; i++) {
-        buffer[i] = 0;
-    }
+    zero_array(buffer, 16);
     aes256_cleanup(&keys);
-    for (uint8_t i = 0; i < 32; i++) {
-        seed_key[i] = 0;
-    }
+    zero_array(seed_key, 32);
 
     munmap(file_data, file_size);
     close(fd);
@@ -435,9 +495,7 @@ int aes256_encrypt_file(char* name) {
  * Decrypt a file with the given seed key.
  */
 int aes256_decrypt_file(char* name) {
-
-
-    int fd = open(name, O_RDWR, 0666);
+    int fd = open(name, O_RDWR);
     if (fd < 0) {
         printf("Could not open %s.\n", name);
         return -1;
@@ -477,9 +535,56 @@ int aes256_decrypt_file(char* name) {
     sha256_update(&context, (uint8_t*) password, strlen(password));
     sha256_finish(&context, seed_key);
     sha256_clean_context(&context);
-    for (uint8_t i = 0; i < strlen(password); i++) {
-        password[i] = 0;
+    zero_array((uint8_t*) password, (uint8_t) strlen(password));
+
+    char* input_file = malloc(8 + strlen(name) + 1);
+    strcpy(input_file, ".hashes/");
+    strcat(input_file, name);
+    int hash_descriptor = open(input_file, O_RDWR);
+    if (hash_descriptor < 0) {
+        printf("Could not retrieve the password hash's hash.\n");
+        free(input_file);
+        zero_array(seed_key, 32);
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
     }
+    free(input_file);
+
+    uint8_t stored_hash[32];
+    ssize_t amount = read(hash_descriptor, stored_hash, 32);
+    close(hash_descriptor);
+
+    if (amount < 32) {
+        printf("Could not read the full hash from disk.\n");
+        zero_array(seed_key, 32);
+        zero_array(stored_hash, 32);
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
+    }
+
+    uint8_t hash_hash[32];
+    sha256_initialize(&context);
+    sha256_update(&context, (uint8_t*) seed_key, 32);
+    sha256_finish(&context, hash_hash);
+    sha256_clean_context(&context);
+
+    if (strncmp((char*) stored_hash, (char*) hash_hash, 32)) {
+        printf("The hash does not correspond to the stored hash.\n");
+        zero_array(seed_key, 32);
+        zero_array(stored_hash, 32);
+        zero_array(hash_hash, 32);
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
+    }
+
+    zero_array(stored_hash, 32);
+    zero_array(hash_hash, 32);
 
     aes256_keys keys;
 
@@ -493,13 +598,9 @@ int aes256_decrypt_file(char* name) {
         general_copy(file_data + file_pointer, buffer, 16);
     }
 
-    for (uint8_t i = 0; i < 16; i++) {
-        buffer[i] = 0;
-    }
+    zero_array(buffer, 16);
     aes256_cleanup(&keys);
-    for (uint8_t i = 0; i < 32; i++) {
-        seed_key[i] = 0;
-    }
+    zero_array(seed_key, 32);
 
     uint8_t padding = file_data[file_size - 1];
     if (ftruncate(fd, file_size - padding) < 0) {

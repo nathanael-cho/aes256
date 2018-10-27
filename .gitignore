@@ -5,3 +5,4 @@ encrypted.txt
 sha256/test
 sha256/test.dSYM/*
 *~
+.hashes/*
