@@ -14,6 +14,8 @@
 char* getpass(const char* prompt);
 int ftruncate(int fd, off_t length);
 
+// TODO: Write a command that allows people to view encrypted files then encrypts the data again.
+
 //////////////////////
 // SUBSTITUTION BOX //
 //////////////////////
@@ -99,6 +101,12 @@ inline static uint8_t get_sbox_inverse(unsigned char x) {
 /////////////
 // HELPERS //
 /////////////
+
+void truncate_file(char*name, int fd, size_t file_size, uint8_t padding) {
+    if (ftruncate(fd, file_size - padding) < 0) {
+        printf("There are %d extra zero bytes at the end of %s.\n", padding, name);
+    }
+}
 
 static void zero_array(uint8_t* array, uint8_t length) {
     for (uint8_t i = 0; i < length; i++) {
@@ -388,9 +396,7 @@ int aes256_encrypt_file(char* name) {
     uint8_t* file_data = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (!file_data) {
         printf("Failed to memory-map %s.\n", name);
-        if (ftruncate(fd, file_size - padding) < 0) {
-            printf("There are %d extra zero bytes at the end of %s.\n", padding, name);
-        }
+        truncate_file(name, fd, file_size, padding);
         close(fd);
         return -1;
     }
@@ -399,6 +405,7 @@ int aes256_encrypt_file(char* name) {
     char* password = getpass("Password:");
     if (!password) {
         printf("Failed to input a password.\n");
+        truncate_file(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
         return -1;
@@ -413,6 +420,7 @@ int aes256_encrypt_file(char* name) {
         printf("Failed to input the password a second time.\n");
         zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
         free(backup);
+        truncate_file(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
         return -1;
@@ -423,6 +431,7 @@ int aes256_encrypt_file(char* name) {
         zero_array((uint8_t*) password, (uint8_t) strlen(password));
         free(password);
         free(backup);
+        truncate_file(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
         return -1;
@@ -451,6 +460,9 @@ int aes256_encrypt_file(char* name) {
     char* output_file = malloc(strlen(home_directory) + 9 + strlen(full_path) + 1);
     strcpy(output_file, home_directory);
     strcat(output_file, "/.hashes/");
+    if (mkdir(output_file, S_IRWXU | S_IRGRP | S_IROTH)) {
+        // printf("The directory already exists.\n");
+    }
     strcat(output_file, full_path);
     free(full_path);
 
@@ -459,6 +471,7 @@ int aes256_encrypt_file(char* name) {
         printf("Could not store the password hash's hash.\n");
         free(output_file);
         zero_array(seed_key, 32);
+        truncate_file(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
 
@@ -478,6 +491,7 @@ int aes256_encrypt_file(char* name) {
     if (written < 32) {
         printf("Could not write the hash's hash out to disk.\n");
         zero_array(seed_key, 32);
+        truncate_file(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
 
@@ -584,6 +598,7 @@ int aes256_decrypt_file(char* name) {
     free(input_file);
 
     uint8_t stored_hash[32];
+    // TODO: Store a flag with the hash, showing whether a file is already encrypted/decrypted.
     ssize_t amount = read(hash_descriptor, stored_hash, 32);
     close(hash_descriptor);
 
