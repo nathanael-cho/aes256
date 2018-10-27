@@ -1,0 +1,7 @@
+#!/usr/local/bin/bash
+
+if [ -z "$1" ]; then
+    echo "Usage: viewencrypted [file]"
+else
+    (./decrypt $1 && less $1 && ./encrypt $1) || (echo "The file is not encrypted." && less $1)
+fi

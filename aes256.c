@@ -14,8 +14,6 @@
 char* getpass(const char* prompt);
 int ftruncate(int fd, off_t length);
 
-// TODO: Write a command that allows people to view encrypted files then encrypts the data again.
-
 //////////////////////
 // SUBSTITUTION BOX //
 //////////////////////
