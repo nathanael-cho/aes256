@@ -486,16 +486,67 @@ int aes256_encrypt_file(char* name) {
     }
     free(output_file);
 
-    uint8_t hash_hash[32];
+    file_hash output_content;
+
+    struct stat output_metadata;
+    if (fstat(hash_descriptor, &output_metadata) < 0) {
+        printf("Could not determine metadata for the hash output file for %s.\n", name);
+        close(hash_descriptor);
+        zero_array(seed_key, 32);
+        truncate_file(name, fd, file_size, padding);
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
+    }
+    size_t output_length = output_metadata.st_size;
+    if (output_length >= sizeof(file_hash)) {
+        ssize_t amount = read(hash_descriptor, &output_content, sizeof(file_hash));
+        if (amount < (ssize_t) sizeof(file_hash)) {
+            printf("Could not read in metadata from the hash output file for %s.\n", name);
+            memset(&output_content, 0, sizeof(file_hash));
+            close(hash_descriptor);
+            zero_array(seed_key, 32);
+            truncate_file(name, fd, file_size, padding);
+            munmap(file_data, file_size);
+            close(fd);
+
+            return -1;
+        }
+        if (output_content.is_encrypted_flag) {
+            printf("%s is already encrypted.\n", name);
+            memset(&output_content, 0, sizeof(file_hash));
+            close(hash_descriptor);
+            zero_array(seed_key, 32);
+            truncate_file(name, fd, file_size, padding);
+            munmap(file_data, file_size);
+            close(fd);
+
+            return -1;
+        }
+        memset(&output_content, 0, sizeof(file_hash));
+        if (lseek(hash_descriptor, 0, SEEK_SET) < 0) {
+            printf("Could not move the output file descriptor back to the beginning.\n");
+            close(hash_descriptor);
+            zero_array(seed_key, 32);
+            truncate_file(name, fd, file_size, padding);
+            munmap(file_data, file_size);
+            close(fd);
+
+            return -1;
+        }
+    }
+
     sha256_initialize(&context);
     sha256_update(&context, (uint8_t*) seed_key, 32);
-    sha256_finish(&context, hash_hash);
+    sha256_finish(&context, output_content.hash);
     sha256_clean_context(&context);
-    ssize_t written = write(hash_descriptor, hash_hash, 32);
+    output_content.is_encrypted_flag = 1;
+    ssize_t written = write(hash_descriptor, &output_content, sizeof(file_hash));
     close(hash_descriptor);
-    zero_array(hash_hash, 32);
+    zero_array(output_content.hash, 32);
 
-    if (written < 32) {
+    if (written < (ssize_t) sizeof(file_hash)) {
         printf("Could not write the hash's hash out to disk.\n");
         zero_array(seed_key, 32);
         truncate_file(name, fd, file_size, padding);
@@ -612,15 +663,36 @@ int aes256_decrypt_file(char* name) {
     }
     free(input_file);
 
-    uint8_t stored_hash[32];
-    // TODO: Store a flag with the hash, showing whether a file is already encrypted/decrypted.
-    ssize_t amount = read(hash_descriptor, stored_hash, 32);
-    close(hash_descriptor);
+    file_hash stored_hash;
+    ssize_t amount = read(hash_descriptor, &stored_hash, sizeof(file_hash));
 
-    if (amount < 32) {
+    if (amount < (ssize_t) sizeof(file_hash)) {
         printf("Could not read the full hash from disk.\n");
+        close(hash_descriptor);
         zero_array(seed_key, 32);
-        zero_array(stored_hash, 32);
+        memset(&stored_hash, 0, sizeof(file_hash));
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
+    }
+
+    if (!stored_hash.is_encrypted_flag) {
+        printf("%s is not encrypted.\n", name);
+        close(hash_descriptor);
+        zero_array(seed_key, 32);
+        memset(&stored_hash, 0, sizeof(file_hash));
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
+    }
+
+    if (lseek(hash_descriptor, 0, SEEK_SET) < 0) {
+        printf("Could not rewind the hash input file's file descriptor.\n");
+        close(hash_descriptor);
+        zero_array(seed_key, 32);
+        memset(&stored_hash, 0, sizeof(file_hash));
         munmap(file_data, file_size);
         close(fd);
 
@@ -633,10 +705,11 @@ int aes256_decrypt_file(char* name) {
     sha256_finish(&context, hash_hash);
     sha256_clean_context(&context);
 
-    if (strncmp((char*) stored_hash, (char*) hash_hash, 32)) {
+    if (strncmp((char*) stored_hash.hash, (char*) hash_hash, 32)) {
         printf("The hash does not correspond to the stored hash.\n");
+        close(hash_descriptor);
         zero_array(seed_key, 32);
-        zero_array(stored_hash, 32);
+        zero_array(stored_hash.hash, 32);
         zero_array(hash_hash, 32);
         munmap(file_data, file_size);
         close(fd);
@@ -644,7 +717,23 @@ int aes256_decrypt_file(char* name) {
         return -1;
     }
 
-    zero_array(stored_hash, 32);
+    // This works, because if stop writing beforehand, it will be as before
+    stored_hash.is_encrypted_flag = 0;
+    ssize_t written = write(hash_descriptor, &stored_hash, sizeof(file_hash));
+    close(hash_descriptor);
+
+    if (written < (ssize_t) sizeof(file_hash)) {
+        printf("Could not update encryption flag to zero.\n");
+        zero_array(seed_key, 32);
+        zero_array(stored_hash.hash, 32);
+        zero_array(hash_hash, 32);
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
+    }
+
+    zero_array(stored_hash.hash, 32);
     zero_array(hash_hash, 32);
 
     aes256_keys keys;
