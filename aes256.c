@@ -11,6 +11,8 @@
 #include "aes256.h"
 #include "sha256/sha256.h"
 
+// TODO: Clean up code.
+
 char* getpass(const char* prompt);
 int ftruncate(int fd, off_t length);
 
