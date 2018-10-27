@@ -439,6 +439,7 @@ int aes256_encrypt_file(char* name) {
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
     free(password);
 
+    // TODO: How can we reduce conflicts here (maybe a hash)?
     char* full_path = realpath(name, NULL);
     for (uint8_t i = 0; i < strlen(full_path); i++) {
         if (full_path[i] == '/') {
