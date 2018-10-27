@@ -50,11 +50,6 @@ void simple_test() {
 }
 
 void file_test(char* name) {
-    uint8_t seed_key[32];
-    for (uint8_t i = 0; i < sizeof(seed_key);i++) {
-        seed_key[i] = i;
-    }
-
     char* copy_expected_command = malloc(strlen(name) + 3 + 15 + 1);
     strcpy(copy_expected_command, "cp ");
     strcat(copy_expected_command, name);
@@ -72,7 +67,7 @@ void file_test(char* name) {
 
     system(copy_expected_command);
 
-    if (aes256_encrypt_file(name, seed_key) < 0) {
+    if (aes256_encrypt_file(name) < 0) {
         printf("Encryption of %s failed.\n", name);
         free(copy_expected_command);
         free(diff_command);
@@ -81,7 +76,7 @@ void file_test(char* name) {
 
     system(copy_encrypted_command);
 
-    if (aes256_decrypt_file(name, seed_key) < 0) {
+    if (aes256_decrypt_file(name) < 0) {
         printf("Decryption of %s failed.\n", name);
         free(copy_expected_command);
         free(diff_command);
@@ -89,10 +84,6 @@ void file_test(char* name) {
     }
 
     system(diff_command);
-
-    for (uint8_t i = 0; i < sizeof(seed_key);i++) {
-        seed_key[i] = 0;
-    }
 
     free(copy_expected_command);
     free(copy_encrypted_command);

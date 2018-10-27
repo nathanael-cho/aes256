@@ -1,10 +1,13 @@
 #include <fcntl.h>
+#include <pwd.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "aes256.h"
+#include "sha256/sha256.h"
 
 //////////////////////
 // SUBSTITUTION BOX //
@@ -348,7 +351,7 @@ void aes256_decrypt(aes256_keys* keys, uint8_t* buffer) {
  *
  * Encrypt a file with the given seed key.
  */
-int aes256_encrypt_file(char* name, uint8_t* seed_key) {
+int aes256_encrypt_file(char* name) {
     int fd = open(name, O_RDWR, 0666);
     if (fd < 0) {
         printf("Could not open %s.\n", name);
@@ -382,6 +385,24 @@ int aes256_encrypt_file(char* name, uint8_t* seed_key) {
     }
     file_data[file_size - 1] = padding;
 
+    char* password = getpass("Password:");
+    if (!password) {
+        printf("Failed to input a password.\n");
+        munmap(file_data, file_size);
+        close(fd);
+        return -1;
+    }
+
+    uint8_t seed_key[32];
+    sha256_context context;
+    sha256_initialize(&context);
+    sha256_update(&context, (uint8_t*) password, strlen(password));
+    sha256_finish(&context, seed_key);
+    sha256_clean_context(&context);
+    for (uint8_t i = 0; i < strlen(password); i++) {
+        password[i] = 0;
+    }
+
     aes256_keys keys;
 
     uint8_t buffer[16] = {0};
@@ -398,6 +419,9 @@ int aes256_encrypt_file(char* name, uint8_t* seed_key) {
         buffer[i] = 0;
     }
     aes256_cleanup(&keys);
+    for (uint8_t i = 0; i < 32; i++) {
+        seed_key[i] = 0;
+    }
 
     munmap(file_data, file_size);
     close(fd);
@@ -410,7 +434,9 @@ int aes256_encrypt_file(char* name, uint8_t* seed_key) {
  *
  * Decrypt a file with the given seed key.
  */
-int aes256_decrypt_file(char* name, uint8_t* seed_key) {
+int aes256_decrypt_file(char* name) {
+
+
     int fd = open(name, O_RDWR, 0666);
     if (fd < 0) {
         printf("Could not open %s.\n", name);
@@ -437,6 +463,24 @@ int aes256_decrypt_file(char* name, uint8_t* seed_key) {
         return -1;
     }
 
+    char* password = getpass("Password:");
+    if (!password) {
+        printf("Failed to input a password.\n");
+        munmap(file_data, file_size);
+        close(fd);
+        return -1;
+    }
+
+    uint8_t seed_key[32];
+    sha256_context context;
+    sha256_initialize(&context);
+    sha256_update(&context, (uint8_t*) password, strlen(password));
+    sha256_finish(&context, seed_key);
+    sha256_clean_context(&context);
+    for (uint8_t i = 0; i < strlen(password); i++) {
+        password[i] = 0;
+    }
+
     aes256_keys keys;
 
     uint8_t buffer[16] = {0};
@@ -453,6 +497,9 @@ int aes256_decrypt_file(char* name, uint8_t* seed_key) {
         buffer[i] = 0;
     }
     aes256_cleanup(&keys);
+    for (uint8_t i = 0; i < 32; i++) {
+        seed_key[i] = 0;
+    }
 
     uint8_t padding = file_data[file_size - 1];
     if (ftruncate(fd, file_size - padding) < 0) {
