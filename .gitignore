@@ -7,6 +7,6 @@ sha256/test.dSYM/*
 decrypt
 decrypt.dSYM/*
 encrypt
-encrypt.cSYM/*
+encrypt.dSYM/*
 test
 test.dSYM/*
