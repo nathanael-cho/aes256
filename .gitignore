@@ -1,8 +1,12 @@
-test
-test.dSYM/*
 expected.txt
 encrypted.txt
 sha256/test
 sha256/test.dSYM/*
 *~
 .hashes/*
+decrypt
+decrypt.dSYM/*
+encrypt
+encrypt.cSYM/*
+test
+test.dSYM/*

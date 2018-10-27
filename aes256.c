@@ -11,6 +11,9 @@
 #include "aes256.h"
 #include "sha256/sha256.h"
 
+char* getpass(const char* prompt);
+int ftruncate(int fd, off_t length);
+
 //////////////////////
 // SUBSTITUTION BOX //
 //////////////////////
@@ -418,6 +421,7 @@ int aes256_encrypt_file(char* name) {
         printf("The passwords do not match.\n");
         zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
         zero_array((uint8_t*) password, (uint8_t) strlen(password));
+        free(password);
         free(backup);
         munmap(file_data, file_size);
         close(fd);
@@ -433,6 +437,7 @@ int aes256_encrypt_file(char* name) {
     sha256_finish(&context, seed_key);
     sha256_clean_context(&context);
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
+    free(password);
 
     char* output_file = malloc(8 + strlen(name) + 1);
     strcpy(output_file, ".hashes/");
@@ -493,6 +498,8 @@ int aes256_encrypt_file(char* name) {
  * aes256_decrypt_file(name, seed_key)
  *
  * Decrypt a file with the given seed key.
+ * Because of how `getpass` works, using a single, we disallow
+ * file encryption and file decryption in the same C program.
  */
 int aes256_decrypt_file(char* name) {
     int fd = open(name, O_RDWR);
@@ -536,6 +543,7 @@ int aes256_decrypt_file(char* name) {
     sha256_finish(&context, seed_key);
     sha256_clean_context(&context);
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
+    free(password);
 
     char* input_file = malloc(8 + strlen(name) + 1);
     strcpy(input_file, ".hashes/");
