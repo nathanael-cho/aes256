@@ -448,23 +448,30 @@ int aes256_encrypt_file(char* name) {
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
     free(password);
 
-    // TODO: How can we reduce conflicts here (maybe a hash)?
     char* full_path = realpath(name, NULL);
-    for (uint8_t i = 0; i < strlen(full_path); i++) {
-        if (full_path[i] == '/') {
-            full_path[i] = '.';
-        }
+    uint8_t full_path_hash[32];
+    sha256_initialize(&context);
+    sha256_update(&context, (uint8_t*) full_path, strlen(full_path));
+    sha256_finish(&context, full_path_hash);
+    sha256_clean_context(&context);
+    free(full_path);
+
+    char hash_hex[64 + 1];
+    for (uint8_t i = 0; i < 32; i++) {
+        sprintf(hash_hex + (i * 2), "%02x", full_path_hash[i]);
     }
+    zero_array(full_path_hash, 32);
+    hash_hex[64] = '\0';
 
     const char* home_directory = getpwuid(getuid())->pw_dir;
-    char* output_file = malloc(strlen(home_directory) + 9 + strlen(full_path) + 1);
+    char* output_file = malloc(strlen(home_directory) + 9 + strlen(hash_hex) + 1);
     strcpy(output_file, home_directory);
     strcat(output_file, "/.hashes/");
     if (mkdir(output_file, S_IRWXU | S_IRGRP | S_IROTH)) {
         // printf("The directory already exists.\n");
     }
-    strcat(output_file, full_path);
-    free(full_path);
+    strcat(output_file, hash_hex);
+    zero_array((uint8_t*) hash_hex, 64);
 
     int hash_descriptor = open(output_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (hash_descriptor < 0) {
@@ -572,18 +579,26 @@ int aes256_decrypt_file(char* name) {
     free(password);
 
     char* full_path = realpath(name, NULL);
-    for (uint8_t i = 0; i < strlen(full_path); i++) {
-        if (full_path[i] == '/') {
-            full_path[i] = '.';
-        }
+    uint8_t full_path_hash[32];
+    sha256_initialize(&context);
+    sha256_update(&context, (uint8_t*) full_path, strlen(full_path));
+    sha256_finish(&context, full_path_hash);
+    sha256_clean_context(&context);
+    free(full_path);
+
+    char hash_hex[64 + 1];
+    for (uint8_t i = 0; i < 32; i++) {
+        sprintf(hash_hex + (i * 2), "%02x", full_path_hash[i]);
     }
+    zero_array(full_path_hash, 32);
+    hash_hex[64] = '\0';
 
     const char* home_directory = getpwuid(getuid())->pw_dir;
-    char* input_file = malloc(strlen(home_directory) + strlen(full_path) + 9 + 1);
+    char* input_file = malloc(strlen(home_directory) + strlen(hash_hex) + 9 + 1);
     strcpy(input_file, home_directory);
     strcat(input_file, "/.hashes/");
-    strcat(input_file, full_path);
-    free(full_path);
+    strcat(input_file, hash_hex);
+    zero_array((uint8_t*) hash_hex, 64);
 
     int hash_descriptor = open(input_file, O_RDWR);
     if (hash_descriptor < 0) {
