@@ -439,9 +439,20 @@ int aes256_encrypt_file(char* name) {
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
     free(password);
 
-    char* output_file = malloc(8 + strlen(name) + 1);
-    strcpy(output_file, ".hashes/");
-    strcat(output_file, name);
+    char* full_path = realpath(name, NULL);
+    for (uint8_t i = 0; i < strlen(full_path); i++) {
+        if (full_path[i] == '/') {
+            full_path[i] = '.';
+        }
+    }
+
+    const char* home_directory = getpwuid(getuid())->pw_dir;
+    char* output_file = malloc(strlen(home_directory) + 9 + strlen(full_path) + 1);
+    strcpy(output_file, home_directory);
+    strcat(output_file, "/.hashes/");
+    strcat(output_file, full_path);
+    free(full_path);
+
     int hash_descriptor = open(output_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (hash_descriptor < 0) {
         printf("Could not store the password hash's hash.\n");
@@ -545,9 +556,20 @@ int aes256_decrypt_file(char* name) {
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
     free(password);
 
-    char* input_file = malloc(8 + strlen(name) + 1);
-    strcpy(input_file, ".hashes/");
-    strcat(input_file, name);
+    char* full_path = realpath(name, NULL);
+    for (uint8_t i = 0; i < strlen(full_path); i++) {
+        if (full_path[i] == '/') {
+            full_path[i] = '.';
+        }
+    }
+
+    const char* home_directory = getpwuid(getuid())->pw_dir;
+    char* input_file = malloc(strlen(home_directory) + strlen(full_path) + 9 + 1);
+    strcpy(input_file, home_directory);
+    strcat(input_file, "/.hashes/");
+    strcat(input_file, full_path);
+    free(full_path);
+
     int hash_descriptor = open(input_file, O_RDWR);
     if (hash_descriptor < 0) {
         printf("Could not retrieve the password hash's hash.\n");
