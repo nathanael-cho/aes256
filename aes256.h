@@ -9,6 +9,8 @@
  *     https://en.wikipedia.org/wiki/Advanced_Encryption_Standard
  */
 
+#define PASSWORD_LIMIT 128
+
 #define uint8_t unsigned char
 
 typedef struct aes256_keys {

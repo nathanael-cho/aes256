@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include <pwd.h>
+#include <readpassphrase.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -98,27 +99,39 @@ inline static uint8_t get_sbox_inverse(unsigned char x) {
     return sbox_inverse[x];
 }
 
-/////////////
-// HELPERS //
-/////////////
+/////////////////////
+// GENERAL HELPERS //
+/////////////////////
 
-void truncate_file(char*name, int fd, size_t file_size, uint8_t padding) {
+int ftruncate_wrapper(char*name, int fd, size_t file_size, uint8_t padding) {
     if (ftruncate(fd, file_size - padding) < 0) {
         printf("There are %d extra zero bytes at the end of %s.\n", padding, name);
+        return -1;
     }
+    return 0;
 }
 
-static void zero_array(uint8_t* array, uint8_t length) {
-    for (uint8_t i = 0; i < length; i++) {
-        array[i] = 0;
-    }
+inline static void zero_array(uint8_t* array, uint8_t length) {
+    memset(array, 0, length);
 }
 
-static void general_copy(uint8_t* destination, uint8_t* source, uint8_t length) {
+inline static void copy_array(uint8_t* destination, uint8_t* source, uint8_t length) {
     for (uint8_t i = 0; i < length; i++) {
         destination[i] = source[i];
     }
 }
+
+static void get_hash(uint8_t* key, uint8_t key_length, uint8_t* hash) {
+    sha256_context context;
+    sha256_initialize(&context);
+    sha256_update(&context, key, key_length);
+    sha256_finish(&context, hash);
+    sha256_clean_context(&context);
+}
+
+/////////////////////
+// AES 256 HELPERS //
+/////////////////////
 
 inline static uint8_t next_round_constant(uint8_t x) {
     uint8_t y = (uint8_t) (x << 1);
@@ -291,9 +304,8 @@ static void aes256_reverse_column_mix(uint8_t* buffer) {
  */
 void aes256_initialize(aes256_keys* keys, uint8_t* seed_key) {
     uint8_t round_constant = 1;
-    for (uint8_t i = 0; i < sizeof(keys->encryption_key); i++) {
-        keys->encryption_key[i] = keys->decryption_key[i] = seed_key[i];
-    }
+    copy_array(keys->encryption_key, seed_key, sizeof(keys->encryption_key));
+    copy_array(keys->decryption_key, seed_key, sizeof(keys->encryption_key));
     // https://en.wikipedia.org/wiki/Rijndael_key_schedule
     for (uint8_t i = 0; i < 7; i++) {
         aes256_expand_key(keys->decryption_key, &round_constant);
@@ -306,9 +318,9 @@ void aes256_initialize(aes256_keys* keys, uint8_t* seed_key) {
  * Zero out the keys.
  */
 void aes256_cleanup(aes256_keys* keys) {
-    for (uint8_t i = 0; i < sizeof(keys->round_key); i++) {
-        keys->round_key[i] = keys->encryption_key[i] = keys->decryption_key[i] = 0;
-    }
+    zero_array(keys->round_key, sizeof(keys->round_key));
+    zero_array(keys->round_key, sizeof(keys->encryption_key));
+    zero_array(keys->round_key, sizeof(keys->decryption_key));
 }
 
 /**
@@ -396,7 +408,7 @@ int aes256_encrypt_file(char* name) {
     uint8_t* file_data = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (!file_data) {
         printf("Failed to memory-map %s.\n", name);
-        truncate_file(name, fd, file_size, padding);
+        ftruncate_wrapper(name, fd, file_size, padding);
         close(fd);
         return -1;
     }
@@ -405,14 +417,14 @@ int aes256_encrypt_file(char* name) {
     char* password = getpass("Password:");
     if (!password) {
         printf("Failed to input a password.\n");
-        truncate_file(name, fd, file_size, padding);
+        ftruncate_wrapper(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
         return -1;
     }
 
     char* backup = malloc(strlen(password) + 1);
-    strcpy(backup, password);
+    copy_array((uint8_t*) backup, (uint8_t*) password, strlen(password));
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
 
     password = getpass("Enter password again:");
@@ -420,7 +432,7 @@ int aes256_encrypt_file(char* name) {
         printf("Failed to input the password a second time.\n");
         zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
         free(backup);
-        truncate_file(name, fd, file_size, padding);
+        ftruncate_wrapper(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
         return -1;
@@ -431,7 +443,7 @@ int aes256_encrypt_file(char* name) {
         zero_array((uint8_t*) password, (uint8_t) strlen(password));
         free(password);
         free(backup);
-        truncate_file(name, fd, file_size, padding);
+        ftruncate_wrapper(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
         return -1;
@@ -440,20 +452,13 @@ int aes256_encrypt_file(char* name) {
     free(backup);
 
     uint8_t seed_key[32];
-    sha256_context context;
-    sha256_initialize(&context);
-    sha256_update(&context, (uint8_t*) password, strlen(password));
-    sha256_finish(&context, seed_key);
-    sha256_clean_context(&context);
+    get_hash((uint8_t*) password, (uint8_t) strlen(password), seed_key);
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
     free(password);
 
     char* full_path = realpath(name, NULL);
     uint8_t full_path_hash[32];
-    sha256_initialize(&context);
-    sha256_update(&context, (uint8_t*) full_path, strlen(full_path));
-    sha256_finish(&context, full_path_hash);
-    sha256_clean_context(&context);
+    get_hash((uint8_t*) full_path, strlen(full_path), full_path_hash);
     free(full_path);
 
     char hash_hex[64 + 1];
@@ -478,7 +483,7 @@ int aes256_encrypt_file(char* name) {
         printf("Could not store the password hash's hash.\n");
         free(output_file);
         zero_array(seed_key, 32);
-        truncate_file(name, fd, file_size, padding);
+        ftruncate_wrapper(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
 
@@ -493,7 +498,7 @@ int aes256_encrypt_file(char* name) {
         printf("Could not determine metadata for the hash output file for %s.\n", name);
         close(hash_descriptor);
         zero_array(seed_key, 32);
-        truncate_file(name, fd, file_size, padding);
+        ftruncate_wrapper(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
 
@@ -507,7 +512,7 @@ int aes256_encrypt_file(char* name) {
             memset(&output_content, 0, sizeof(file_hash));
             close(hash_descriptor);
             zero_array(seed_key, 32);
-            truncate_file(name, fd, file_size, padding);
+            ftruncate_wrapper(name, fd, file_size, padding);
             munmap(file_data, file_size);
             close(fd);
 
@@ -518,7 +523,7 @@ int aes256_encrypt_file(char* name) {
             memset(&output_content, 0, sizeof(file_hash));
             close(hash_descriptor);
             zero_array(seed_key, 32);
-            truncate_file(name, fd, file_size, padding);
+            ftruncate_wrapper(name, fd, file_size, padding);
             munmap(file_data, file_size);
             close(fd);
 
@@ -529,7 +534,7 @@ int aes256_encrypt_file(char* name) {
             printf("Could not move the output file descriptor back to the beginning.\n");
             close(hash_descriptor);
             zero_array(seed_key, 32);
-            truncate_file(name, fd, file_size, padding);
+            ftruncate_wrapper(name, fd, file_size, padding);
             munmap(file_data, file_size);
             close(fd);
 
@@ -537,10 +542,7 @@ int aes256_encrypt_file(char* name) {
         }
     }
 
-    sha256_initialize(&context);
-    sha256_update(&context, (uint8_t*) seed_key, 32);
-    sha256_finish(&context, output_content.hash);
-    sha256_clean_context(&context);
+    get_hash(seed_key, 32, output_content.hash);
     output_content.is_encrypted_flag = 1;
     ssize_t written = write(hash_descriptor, &output_content, sizeof(file_hash));
     close(hash_descriptor);
@@ -549,7 +551,7 @@ int aes256_encrypt_file(char* name) {
     if (written < (ssize_t) sizeof(file_hash)) {
         printf("Could not write the hash's hash out to disk.\n");
         zero_array(seed_key, 32);
-        truncate_file(name, fd, file_size, padding);
+        ftruncate_wrapper(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
 
@@ -560,12 +562,12 @@ int aes256_encrypt_file(char* name) {
 
     uint8_t buffer[16] = {0};
     for (size_t file_pointer = 0; file_pointer < file_size; file_pointer += 16) {
-        general_copy(buffer, file_data + file_pointer, 16);
+        copy_array(buffer, file_data + file_pointer, 16);
 
         aes256_initialize(&keys, seed_key);
         aes256_encrypt(&keys, buffer);
 
-        general_copy(file_data + file_pointer, buffer, 16);
+        copy_array(file_data + file_pointer, buffer, 16);
     }
 
     zero_array(buffer, 16);
@@ -621,20 +623,13 @@ int aes256_decrypt_file(char* name) {
     }
 
     uint8_t seed_key[32];
-    sha256_context context;
-    sha256_initialize(&context);
-    sha256_update(&context, (uint8_t*) password, strlen(password));
-    sha256_finish(&context, seed_key);
-    sha256_clean_context(&context);
+    get_hash((uint8_t*) password, strlen(password), seed_key);
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
     free(password);
 
     char* full_path = realpath(name, NULL);
     uint8_t full_path_hash[32];
-    sha256_initialize(&context);
-    sha256_update(&context, (uint8_t*) full_path, strlen(full_path));
-    sha256_finish(&context, full_path_hash);
-    sha256_clean_context(&context);
+    get_hash((uint8_t*) full_path, strlen(full_path), full_path_hash);
     free(full_path);
 
     char hash_hex[64 + 1];
@@ -700,10 +695,7 @@ int aes256_decrypt_file(char* name) {
     }
 
     uint8_t hash_hash[32];
-    sha256_initialize(&context);
-    sha256_update(&context, (uint8_t*) seed_key, 32);
-    sha256_finish(&context, hash_hash);
-    sha256_clean_context(&context);
+    get_hash(seed_key, 32, hash_hash);
 
     if (strncmp((char*) stored_hash.hash, (char*) hash_hash, 32)) {
         printf("The hash does not correspond to the stored hash.\n");
@@ -740,12 +732,12 @@ int aes256_decrypt_file(char* name) {
 
     uint8_t buffer[16] = {0};
     for (size_t file_pointer = 0; file_pointer < file_size; file_pointer += 16) {
-        general_copy(buffer, file_data + file_pointer, 16);
+        copy_array(buffer, file_data + file_pointer, 16);
 
         aes256_initialize(&keys, seed_key);
         aes256_decrypt(&keys, buffer);
 
-        general_copy(file_data + file_pointer, buffer, 16);
+        copy_array(file_data + file_pointer, buffer, 16);
     }
 
     zero_array(buffer, 16);
