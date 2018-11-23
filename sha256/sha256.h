@@ -29,4 +29,6 @@ void sha256_update(sha256_context* context, uint8_t* data, size_t length);
 void sha256_finish(sha256_context* context, uint8_t* hash);
 void sha256_clean_context(sha256_context* context);
 
+void get_sha256_hash(uint8_t* key, uint8_t key_length, uint8_t* hash);
+
 #endif

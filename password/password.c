@@ -1,5 +1,7 @@
 #include "password.h"
 
+int fileno();
+
 char* get_password(char* prompt) {
     // To allow for the newline and null characters
     char* password = malloc(sizeof(char) * (PASSWORD_LIMIT + 2));

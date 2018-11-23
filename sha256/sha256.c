@@ -173,3 +173,16 @@ void sha256_clean_context(sha256_context* context) {
     context->data_length = 0;
     context->bit_length = 0;
 }
+
+/**
+ * get_sha256_hash(key, key_length, hash)
+ *
+ * Carry out the entire hash process.
+ */
+void get_sha256_hash(uint8_t* key, uint8_t key_length, uint8_t* hash) {
+    sha256_context context;
+    sha256_initialize(&context);
+    sha256_update(&context, key, key_length);
+    sha256_finish(&context, hash);
+    sha256_clean_context(&context);
+}
