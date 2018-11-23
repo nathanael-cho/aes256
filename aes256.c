@@ -99,7 +99,10 @@ int ftruncate_wrapper(char*name, int fd, size_t file_size, uint8_t padding) {
 }
 
 inline static void zero_array(uint8_t* array, uint8_t length) {
-    memset(array, 0, length);
+    volatile uint8_t* to_clear = array;
+    for (int i = 0; i < length; i++) {
+        to_clear[i] = '\0';
+    }
 }
 
 inline static void copy_array(uint8_t* destination, uint8_t* source, uint8_t length) {
