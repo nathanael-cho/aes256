@@ -2,6 +2,8 @@ expected.txt
 encrypted.txt
 sha256/test
 sha256/test.dSYM/*
+password/test
+password/test.dSYM/*
 *~
 decrypt
 decrypt.dSYM/*
