@@ -20,13 +20,11 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "infrastructure.h"
+
 #include "sha256/sha256.h"
 
 #define PASSWORD_LIMIT 128
-
-#define IGNORE(x) if(x) {}
-
-#define uint8_t unsigned char
 
 typedef struct aes256_keys {
     uint8_t round_key[32];

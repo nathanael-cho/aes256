@@ -10,8 +10,7 @@
 
 #include <stddef.h>
 
-#define uint8_t unsigned char
-#define uint32_t unsigned int
+#include "infrastructure.h"
 
 typedef struct sha256_context {
     uint8_t data[64];

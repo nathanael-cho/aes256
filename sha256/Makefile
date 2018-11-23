@@ -8,7 +8,7 @@ CC = gcc -std=c11 -g -ggdb3
 
 O ?= 3
 
-CFLAGS = -Wall -Wextra -pedantic -O$(O)
+CFLAGS = -Wall -Wextra -pedantic -I../include -O$(O)
 
 ############
 # COMMANDS #
