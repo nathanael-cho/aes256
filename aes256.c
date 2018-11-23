@@ -447,9 +447,9 @@ void aes256_decrypt(aes256_keys* keys, uint8_t* buffer) {
 }
 
 /**
- * aes256_encrypt_file(name, seed_key)
+ * aes256_encrypt_file(name)
  *
- * Encrypt a file with the given seed key.
+ * Encrypt a file with a password.
  */
 int aes256_encrypt_file(char* name) {
     int fd = open(name, O_RDWR);
@@ -551,9 +551,9 @@ int aes256_encrypt_file(char* name) {
 }
 
 /**
- * aes256_decrypt_file(name, seed_key)
+ * aes256_decrypt_file(name)
  *
- * Decrypt a file with the given seed key.
+ * Decrypt a file with a password.
  */
 int aes256_decrypt_file(char* name) {
     int fd = open(name, O_RDWR);
