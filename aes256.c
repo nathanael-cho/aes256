@@ -1,7 +1,5 @@
 #include "aes256.h"
 
-// TODO: Clean up code.
-
 int ftruncate(int fd, off_t length);
 
 //////////////////////
