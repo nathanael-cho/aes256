@@ -83,6 +83,10 @@ static void sha256_transform(sha256_context* context, uint8_t* data) {
     context->state[7] += h;
 }
 
+/////////////
+// SHA 256 //
+/////////////
+
 /**
  * sha256_initialize(context)
  *

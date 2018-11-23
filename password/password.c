@@ -2,6 +2,11 @@
 
 int fileno();
 
+/**
+ * get_password(prompt)
+ *
+ * Get a user password from standard in.
+ */
 char* get_password(char* prompt) {
     // To allow for the newline and null characters
     char* password = malloc(sizeof(char) * (PASSWORD_LIMIT + 2));
@@ -35,6 +40,11 @@ char* get_password(char* prompt) {
     return password;
 }
 
+/**
+ * get_password_with_double_check()
+ *
+ * Get a user password from standard in and double check it.
+ */
 char* get_password_with_double_check(void) {
     char* password = get_password("Password:");
     if (!password) {
