@@ -20,8 +20,9 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include "infrastructure.h"
+#include "include/infrastructure.h"
 
+#include "password/password.h"
 #include "sha256/sha256.h"
 
 #define PASSWORD_LIMIT 128
