@@ -90,14 +90,6 @@ inline static uint8_t get_sbox_inverse(unsigned char x) {
 // GENERAL HELPERS //
 /////////////////////
 
-int ftruncate_wrapper(char*name, int fd, size_t file_size, uint8_t padding) {
-    if (ftruncate(fd, file_size - padding) < 0) {
-        printf("There are %d extra zero bytes at the end of %s.\n", padding, name);
-        return -1;
-    }
-    return 0;
-}
-
 inline static void zero_array(uint8_t* array, uint8_t length) {
     volatile uint8_t* to_clear = array;
     for (int i = 0; i < length; i++) {
@@ -118,6 +110,10 @@ static void get_hash(uint8_t* key, uint8_t key_length, uint8_t* hash) {
     sha256_finish(&context, hash);
     sha256_clean_context(&context);
 }
+
+//////////////////////
+// PASSWORD HELPERS //
+//////////////////////
 
 char* get_password(char* prompt) {
     // To allow for the newline and null characters
@@ -146,6 +142,151 @@ char* get_password(char* prompt) {
     }
 
     return password;
+}
+
+// The prompts are built in
+char* get_password_with_double_check() {
+    char* password = get_password("Password:");
+    if (!password) {
+        printf("Failed to input a password.\n");
+        return NULL;
+    }
+
+    char* backup = password;
+
+    password = get_password("Enter password again:");
+    if (!password) {
+        printf("Failed to input the password a second time.\n");
+        zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
+        free(backup);
+        return NULL;
+    }
+    if (strcmp(password, backup)) {
+        printf("The passwords do not match.\n");
+        zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
+        zero_array((uint8_t*) password, (uint8_t) strlen(password));
+        free(password);
+        free(backup);
+        return NULL;
+    }
+    zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
+    free(backup);
+
+    return password;
+}
+
+//////////////////
+// FILE HELPERS //
+//////////////////
+
+int ftruncate_wrapper(char*name, int fd, size_t file_size, uint8_t padding) {
+    if (ftruncate(fd, file_size - padding) < 0) {
+        printf("There are %d extra zero bytes at the end of %s.\n", padding, name);
+        return -1;
+    }
+    return 0;
+}
+
+int get_metadata_fd(char* name, int is_encryption_flag) {
+    char* full_path = realpath(name, NULL);
+    uint8_t full_path_hash[32];
+    get_hash((uint8_t*) full_path, strlen(full_path), full_path_hash);
+    free(full_path);
+
+    char hash_hex[64 + 1];
+    for (uint8_t i = 0; i < 32; i++) {
+        sprintf(hash_hex + (i * 2), "%02x", full_path_hash[i]);
+    }
+    zero_array(full_path_hash, 32);
+    hash_hex[64] = '\0';
+
+    const char* home_directory = getpwuid(getuid())->pw_dir;
+    char* file_name = malloc(strlen(home_directory) + 9 + strlen(hash_hex) + 1);
+    strcpy(file_name, home_directory);
+    strcat(file_name, "/.hashes/");
+    if (is_encryption_flag) {
+        IGNORE(mkdir(file_name, S_IRWXU | S_IRGRP | S_IROTH));
+    }
+    strcat(file_name, hash_hex);
+    zero_array((uint8_t*) hash_hex, 64);
+
+    int hash_descriptor = -1;
+    if (is_encryption_flag) {
+        int file_flags = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+        hash_descriptor = open(file_name, O_RDWR | O_CREAT, file_flags);
+    } else {
+        hash_descriptor = open(file_name, O_RDWR);
+    }
+
+    if (hash_descriptor < 0) {
+        printf("Could not store the password hash's hash.\n");
+        free(file_name);
+        return -1;
+    }
+    free(file_name);
+
+    return hash_descriptor;
+}
+
+int check_metadata_struct_encryption(int hash_descriptor, char* name) {
+    file_hash output_content;
+
+    struct stat output_metadata;
+    if (fstat(hash_descriptor, &output_metadata) < 0) {
+        printf("Could not determine metadata for the output for %s.\n", name);
+        close(hash_descriptor);
+
+        return -1;
+    }
+
+    size_t output_length = output_metadata.st_size;
+    if (output_length >= sizeof(file_hash)) {
+        IGNORE(read(hash_descriptor, &output_content, sizeof(file_hash)));
+        if (output_content.is_encrypted_flag) {
+            printf("%s is already encrypted.\n", name);
+            zero_array((uint8_t*) &output_content, sizeof(file_hash));
+            close(hash_descriptor);
+
+            return -1;
+        }
+
+        zero_array((uint8_t*) &output_content, sizeof(file_hash));
+        if (lseek(hash_descriptor, 0, SEEK_SET) < 0) {
+            printf("Could not move the output file descriptor back.\n");
+            close(hash_descriptor);
+
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int check_metadata_struct_decryption(int fd, char* name, file_hash* stored_hash) {
+    ssize_t amount = read(fd, stored_hash, sizeof(file_hash));
+
+    if (amount < (ssize_t) sizeof(file_hash)) {
+        printf("Could not read the full hash from disk.\n");
+        close(fd);
+
+        return -1;
+    }
+
+    if (!(stored_hash->is_encrypted_flag)) {
+        printf("%s is not encrypted.\n", name);
+        close(fd);
+
+        return -1;
+    }
+
+    if (lseek(fd, 0, SEEK_SET) < 0) {
+        printf("Could not rewind the hash input file's file descriptor.\n");
+        close(fd);
+
+        return -1;
+    }
+
+    return 0;
 }
 
 /////////////////////
@@ -433,70 +574,23 @@ int aes256_encrypt_file(char* name) {
     }
     file_data[file_size - 1] = padding;
 
-    char* password = get_password("Password:");
+    char* password = get_password_with_double_check();
     if (!password) {
-        printf("Failed to input a password.\n");
+        // Errors already handled and printed
         ftruncate_wrapper(name, fd, file_size, padding);
         munmap(file_data, file_size);
         close(fd);
         return -1;
     }
-
-    char* backup = password;
-
-    password = get_password("Enter password again:");
-    if (!password) {
-        printf("Failed to input the password a second time.\n");
-        zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
-        free(backup);
-        ftruncate_wrapper(name, fd, file_size, padding);
-        munmap(file_data, file_size);
-        close(fd);
-        return -1;
-    }
-    if (strcmp(password, backup)) {
-        printf("The passwords do not match.\n");
-        zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
-        zero_array((uint8_t*) password, (uint8_t) strlen(password));
-        free(password);
-        free(backup);
-        ftruncate_wrapper(name, fd, file_size, padding);
-        munmap(file_data, file_size);
-        close(fd);
-        return -1;
-    }
-    zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
-    free(backup);
 
     uint8_t seed_key[32];
     get_hash((uint8_t*) password, (uint8_t) strlen(password), seed_key);
     zero_array((uint8_t*) password, (uint8_t) strlen(password));
     free(password);
 
-    char* full_path = realpath(name, NULL);
-    uint8_t full_path_hash[32];
-    get_hash((uint8_t*) full_path, strlen(full_path), full_path_hash);
-    free(full_path);
-
-    char hash_hex[64 + 1];
-    for (uint8_t i = 0; i < 32; i++) {
-        sprintf(hash_hex + (i * 2), "%02x", full_path_hash[i]);
-    }
-    zero_array(full_path_hash, 32);
-    hash_hex[64] = '\0';
-
-    const char* home_directory = getpwuid(getuid())->pw_dir;
-    char* output_file = malloc(strlen(home_directory) + 9 + strlen(hash_hex) + 1);
-    strcpy(output_file, home_directory);
-    strcat(output_file, "/.hashes/");
-    IGNORE(mkdir(output_file, S_IRWXU | S_IRGRP | S_IROTH));
-    strcat(output_file, hash_hex);
-    zero_array((uint8_t*) hash_hex, 64);
-
-    int hash_descriptor = open(output_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    int hash_descriptor = get_metadata_fd(name, 1);
     if (hash_descriptor < 0) {
-        printf("Could not store the password hash's hash.\n");
-        free(output_file);
+        // Errors already handled and printed
         zero_array(seed_key, 32);
         ftruncate_wrapper(name, fd, file_size, padding);
         munmap(file_data, file_size);
@@ -504,74 +598,26 @@ int aes256_encrypt_file(char* name) {
 
         return -1;
     }
-    free(output_file);
+
+    // FEATURE: Encrypt the metadata files.
+
+    if (check_metadata_struct_encryption(hash_descriptor, name) < 0) {
+        // The file descriptor is already closed
+        zero_array(seed_key, 32);
+        ftruncate_wrapper(name, fd, file_size, padding);
+        munmap(file_data, file_size);
+        close(fd);
+
+        return -1;
+    }
 
     file_hash output_content;
 
-    struct stat output_metadata;
-    if (fstat(hash_descriptor, &output_metadata) < 0) {
-        printf("Could not determine metadata for the hash output file for %s.\n", name);
-        close(hash_descriptor);
-        zero_array(seed_key, 32);
-        ftruncate_wrapper(name, fd, file_size, padding);
-        munmap(file_data, file_size);
-        close(fd);
-
-        return -1;
-    }
-    size_t output_length = output_metadata.st_size;
-    if (output_length >= sizeof(file_hash)) {
-        ssize_t amount = read(hash_descriptor, &output_content, sizeof(file_hash));
-        if (amount < (ssize_t) sizeof(file_hash)) {
-            printf("Could not read in metadata from the hash output file for %s.\n", name);
-            memset(&output_content, 0, sizeof(file_hash));
-            close(hash_descriptor);
-            zero_array(seed_key, 32);
-            ftruncate_wrapper(name, fd, file_size, padding);
-            munmap(file_data, file_size);
-            close(fd);
-
-            return -1;
-        }
-        if (output_content.is_encrypted_flag) {
-            printf("%s is already encrypted.\n", name);
-            memset(&output_content, 0, sizeof(file_hash));
-            close(hash_descriptor);
-            zero_array(seed_key, 32);
-            ftruncate_wrapper(name, fd, file_size, padding);
-            munmap(file_data, file_size);
-            close(fd);
-
-            return -1;
-        }
-        memset(&output_content, 0, sizeof(file_hash));
-        if (lseek(hash_descriptor, 0, SEEK_SET) < 0) {
-            printf("Could not move the output file descriptor back to the beginning.\n");
-            close(hash_descriptor);
-            zero_array(seed_key, 32);
-            ftruncate_wrapper(name, fd, file_size, padding);
-            munmap(file_data, file_size);
-            close(fd);
-
-            return -1;
-        }
-    }
-
     get_hash(seed_key, 32, output_content.hash);
     output_content.is_encrypted_flag = 1;
-    ssize_t written = write(hash_descriptor, &output_content, sizeof(file_hash));
+    IGNORE(write(hash_descriptor, &output_content, sizeof(file_hash)));
     close(hash_descriptor);
     zero_array(output_content.hash, 32);
-
-    if (written < (ssize_t) sizeof(file_hash)) {
-        printf("Could not write the hash's hash out to disk.\n");
-        zero_array(seed_key, 32);
-        ftruncate_wrapper(name, fd, file_size, padding);
-        munmap(file_data, file_size);
-        close(fd);
-
-        return -1;
-    }
 
     aes256_keys keys;
 
@@ -645,62 +691,22 @@ int aes256_decrypt_file(char* name) {
     get_hash((uint8_t*) full_path, strlen(full_path), full_path_hash);
     free(full_path);
 
-    char hash_hex[64 + 1];
-    for (uint8_t i = 0; i < 32; i++) {
-        sprintf(hash_hex + (i * 2), "%02x", full_path_hash[i]);
-    }
-    zero_array(full_path_hash, 32);
-    hash_hex[64] = '\0';
-
-    const char* home_directory = getpwuid(getuid())->pw_dir;
-    char* input_file = malloc(strlen(home_directory) + strlen(hash_hex) + 9 + 1);
-    strcpy(input_file, home_directory);
-    strcat(input_file, "/.hashes/");
-    strcat(input_file, hash_hex);
-    zero_array((uint8_t*) hash_hex, 64);
-
-    int hash_descriptor = open(input_file, O_RDWR);
+    int hash_descriptor = get_metadata_fd(name, 0);
     if (hash_descriptor < 0) {
-        printf("Could not retrieve the password hash's hash.\n");
-        free(input_file);
+        // Errors taken care of
         zero_array(seed_key, 32);
         munmap(file_data, file_size);
         close(fd);
 
         return -1;
     }
-    free(input_file);
 
     file_hash stored_hash;
-    ssize_t amount = read(hash_descriptor, &stored_hash, sizeof(file_hash));
+    if (check_metadata_struct_decryption(hash_descriptor, name, &stored_hash) < 0) {
+        // Descriptor already closed
+        zero_array((uint8_t*) &stored_hash, sizeof(file_hash));
 
-    if (amount < (ssize_t) sizeof(file_hash)) {
-        printf("Could not read the full hash from disk.\n");
-        close(hash_descriptor);
         zero_array(seed_key, 32);
-        memset(&stored_hash, 0, sizeof(file_hash));
-        munmap(file_data, file_size);
-        close(fd);
-
-        return -1;
-    }
-
-    if (!stored_hash.is_encrypted_flag) {
-        printf("%s is not encrypted.\n", name);
-        close(hash_descriptor);
-        zero_array(seed_key, 32);
-        memset(&stored_hash, 0, sizeof(file_hash));
-        munmap(file_data, file_size);
-        close(fd);
-
-        return -1;
-    }
-
-    if (lseek(hash_descriptor, 0, SEEK_SET) < 0) {
-        printf("Could not rewind the hash input file's file descriptor.\n");
-        close(hash_descriptor);
-        zero_array(seed_key, 32);
-        memset(&stored_hash, 0, sizeof(file_hash));
         munmap(file_data, file_size);
         close(fd);
 
@@ -714,7 +720,7 @@ int aes256_decrypt_file(char* name) {
         printf("The hash does not correspond to the stored hash.\n");
         close(hash_descriptor);
         zero_array(seed_key, 32);
-        zero_array(stored_hash.hash, 32);
+        zero_array((uint8_t*) &stored_hash, sizeof(file_hash));
         zero_array(hash_hash, 32);
         munmap(file_data, file_size);
         close(fd);
@@ -722,23 +728,11 @@ int aes256_decrypt_file(char* name) {
         return -1;
     }
 
-    // This works, because if stop writing beforehand, it will be as before
     stored_hash.is_encrypted_flag = 0;
-    ssize_t written = write(hash_descriptor, &stored_hash, sizeof(file_hash));
+    IGNORE(write(hash_descriptor, &stored_hash, sizeof(file_hash)));
     close(hash_descriptor);
 
-    if (written < (ssize_t) sizeof(file_hash)) {
-        printf("Could not update encryption flag to zero.\n");
-        zero_array(seed_key, 32);
-        zero_array(stored_hash.hash, 32);
-        zero_array(hash_hash, 32);
-        munmap(file_data, file_size);
-        close(fd);
-
-        return -1;
-    }
-
-    zero_array(stored_hash.hash, 32);
+    zero_array((uint8_t*) &stored_hash, sizeof(file_hash));
     zero_array(hash_hash, 32);
 
     aes256_keys keys;
