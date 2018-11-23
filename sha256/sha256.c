@@ -169,7 +169,7 @@ void sha256_finish(sha256_context* context, uint8_t* hash) {
  */
 void sha256_clean_context(sha256_context* context) {
     memset(context->data, 0, 64 * sizeof(uint8_t));
-    memset(context->state, 0, 8 * sizeof(uint8_t));
+    memset(context->state, 0, 8 * sizeof(uint32_t));
     context->data_length = 0;
     context->bit_length = 0;
 }

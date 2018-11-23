@@ -1,6 +1,7 @@
 #include "aes256.h"
 
-int ftruncate(int fd, off_t length);
+int fileno();
+int ftruncate();
 
 //////////////////////
 // SUBSTITUTION BOX //
@@ -130,7 +131,11 @@ char* get_password(char* prompt) {
     }
 
     printf("%s", prompt);
-    fgets(password, PASSWORD_LIMIT + 2, stdin);
+    if (!fgets(password, PASSWORD_LIMIT + 2, stdin)) {
+        zero_array((uint8_t*) password, PASSWORD_LIMIT + 2);
+        free(password);
+        return NULL;
+    }
     password[strlen(password) - 1] = '\0';
 
     if (tcsetattr(fileno(stdin), TCSANOW, &old_flags)) {
