@@ -1,20 +1,7 @@
-#include <fcntl.h>
-#include <pwd.h>
-#include <readpassphrase.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-
 #include "aes256.h"
-#include "sha256/sha256.h"
 
 // TODO: Clean up code.
 
-char* getpass(const char* prompt);
 int ftruncate(int fd, off_t length);
 
 //////////////////////
@@ -127,6 +114,35 @@ static void get_hash(uint8_t* key, uint8_t key_length, uint8_t* hash) {
     sha256_update(&context, key, key_length);
     sha256_finish(&context, hash);
     sha256_clean_context(&context);
+}
+
+char* get_password(char* prompt) {
+    // To allow for the newline and null characters
+    char* password = malloc(sizeof(char) * (PASSWORD_LIMIT + 2));
+
+    struct termios old_flags;
+    tcgetattr(fileno(stdin), &old_flags);
+
+    struct termios new_flags = old_flags;
+    new_flags.c_lflag &= ~ECHO;
+    new_flags.c_lflag |= ECHONL;
+
+    if (tcsetattr(fileno(stdin), TCSANOW, &new_flags)) {
+        free(password);
+        return NULL;
+    }
+
+    printf("%s", prompt);
+    fgets(password, PASSWORD_LIMIT + 2, stdin);
+    password[strlen(password) - 1] = '\0';
+
+    if (tcsetattr(fileno(stdin), TCSANOW, &old_flags)) {
+        zero_array((uint8_t*) password, strlen(password));
+        free(password);
+        return NULL;
+    }
+
+    return password;
 }
 
 /////////////////////
@@ -414,7 +430,7 @@ int aes256_encrypt_file(char* name) {
     }
     file_data[file_size - 1] = padding;
 
-    char* password = getpass("Password:");
+    char* password = get_password("Password:");
     if (!password) {
         printf("Failed to input a password.\n");
         ftruncate_wrapper(name, fd, file_size, padding);
@@ -423,11 +439,9 @@ int aes256_encrypt_file(char* name) {
         return -1;
     }
 
-    char* backup = malloc(strlen(password) + 1);
-    copy_array((uint8_t*) backup, (uint8_t*) password, strlen(password));
-    zero_array((uint8_t*) password, (uint8_t) strlen(password));
+    char* backup = password;
 
-    password = getpass("Enter password again:");
+    password = get_password("Enter password again:");
     if (!password) {
         printf("Failed to input the password a second time.\n");
         zero_array((uint8_t*) backup, (uint8_t) strlen(backup));
@@ -472,9 +486,7 @@ int aes256_encrypt_file(char* name) {
     char* output_file = malloc(strlen(home_directory) + 9 + strlen(hash_hex) + 1);
     strcpy(output_file, home_directory);
     strcat(output_file, "/.hashes/");
-    if (mkdir(output_file, S_IRWXU | S_IRGRP | S_IROTH)) {
-        // printf("The directory already exists.\n");
-    }
+    IGNORE(mkdir(output_file, S_IRWXU | S_IRGRP | S_IROTH));
     strcat(output_file, hash_hex);
     zero_array((uint8_t*) hash_hex, 64);
 
@@ -584,8 +596,6 @@ int aes256_encrypt_file(char* name) {
  * aes256_decrypt_file(name, seed_key)
  *
  * Decrypt a file with the given seed key.
- * Because of how `getpass` works, using a single, we disallow
- * file encryption and file decryption in the same C program.
  */
 int aes256_decrypt_file(char* name) {
     int fd = open(name, O_RDWR);
@@ -614,7 +624,7 @@ int aes256_decrypt_file(char* name) {
         return -1;
     }
 
-    char* password = getpass("Password:");
+    char* password = get_password("Password:");
     if (!password) {
         printf("Failed to input a password.\n");
         munmap(file_data, file_size);

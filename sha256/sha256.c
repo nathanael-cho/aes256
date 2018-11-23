@@ -168,12 +168,8 @@ void sha256_finish(sha256_context* context, uint8_t* hash) {
  * Zero out the context.
  */
 void sha256_clean_context(sha256_context* context) {
-    for (uint8_t i = 0; i < 64; i++) {
-        context->data[i] = 0;
-    }
-    for (uint8_t i = 0; i < 8; i++) {
-        context->state[i] = 0;
-    }
+    memset(context->data, 0, 64 * sizeof(uint8_t));
+    memset(context->state, 0, 8 * sizeof(uint8_t));
     context->data_length = 0;
     context->bit_length = 0;
 }
