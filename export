@@ -1,0 +1,7 @@
+#!/usr/local/bin/bash
+
+make
+cp encrypt /usr/local/bin/encrypt
+cp decrypt /usr/local/bin/decrypt
+cp viewencrypted /usr/local/bin/viewencrypted
+make clean
