@@ -18,10 +18,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "include/infrastructure.h"
+#include "../include/infrastructure.h"
 
-#include "password/password.h"
-#include "sha256/sha256.h"
+#include "../password/password.h"
+#include "../sha256/sha256.h"
 
 #define PASSWORD_LIMIT 128
 

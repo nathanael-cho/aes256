@@ -1,9 +1,5 @@
 #!/usr/local/bin/bash
 
-make simple_test
-./simple_test
-make clean
-
 if ! [ -z "$1" ]; then
     make
     cp $1 expected.txt
@@ -12,4 +8,6 @@ if ! [ -z "$1" ]; then
     ./decrypt $1
     diff $1 expected.txt
     make clean
+else
+    echo "Usage: ./test [file path]"
 fi

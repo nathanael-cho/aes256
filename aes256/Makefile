@@ -14,8 +14,8 @@ CFLAGS = -Wall -Wextra -pedantic -O$(O)
 # COMMANDS #
 ############
 
-test:
-	$(CC) $(CFLAGS) test.c password.c -o $@
+test: clean
+	$(CC) $(CFLAGS) test.c aes256.c ../sha256/sha256.c ../password/password.c -o $@
 
 clean:
-	rm -rf *.o test *~ test.dSYM/ .deps/
+	rm -rf *.o *~ .deps/ test test.dSYM/

@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "aes256.h"
+#include "aes256/aes256.h"
 
 int main(int argc, char** argv) {
     if (argc > 1) {
