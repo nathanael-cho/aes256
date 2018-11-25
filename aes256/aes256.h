@@ -18,7 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "../include/infrastructure.h"
+#include "../infrastructure.h"
 
 #include "../password/password.h"
 #include "../sha256/sha256.h"

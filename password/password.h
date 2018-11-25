@@ -6,7 +6,7 @@
 #include <string.h>
 #include <termios.h>
 
-#include "../include/infrastructure.h"
+#include "../infrastructure.h"
 
 #define PASSWORD_LIMIT 128
 

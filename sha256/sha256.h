@@ -10,7 +10,7 @@
 
 #include <stddef.h>
 
-#include "../include/infrastructure.h"
+#include "../infrastructure.h"
 
 typedef struct sha256_context {
     uint8_t data[64];
