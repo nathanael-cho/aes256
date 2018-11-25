@@ -1,6 +1,4 @@
-# AES 256
-The repository contains a simple implementation of the AES 256 encryption algorithm.
+# Encryption
+The repository contains simple implementations of file encryption and file decryption, using a hash of a user password as the encryption key.
 
-General information about the algorithm can be found at https://en.wikipedia.org/wiki/Advanced_Encryption_Standard.
-
-This particular implementation is largely taken from http://www.literatecode.com/aes256.
+Resources used for the various algorithms can be found in the respective header files.
