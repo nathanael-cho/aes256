@@ -9,21 +9,7 @@
  *     https://en.wikipedia.org/wiki/Advanced_Encryption_Standard
  */
 
-#include <fcntl.h>
-#include <pwd.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-
 #include "../infrastructure.h"
-
-#include "../password/password.h"
-#include "../sha256/sha256.h"
-
-#define PASSWORD_LIMIT 128
 
 typedef struct aes256_keys {
     uint8_t round_key[32];
@@ -35,8 +21,5 @@ void aes256_initialize(aes256_keys* keys, uint8_t* seed_key);
 void aes256_cleanup(aes256_keys* keys);
 void aes256_encrypt(aes256_keys* keys, uint8_t* buffer);
 void aes256_decrypt(aes256_keys* keys, uint8_t* buffer);
-
-int aes256_encrypt_file(char* name);
-int aes256_decrypt_file(char* name);
 
 #endif

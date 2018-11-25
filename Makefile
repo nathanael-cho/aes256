@@ -15,10 +15,10 @@ CFLAGS = -Wall -Wextra -pedantic -O$(O)
 ############
 
 encrypt:
-	$(CC) $(CFLAGS) encrypt.c aes256/aes256.c sha256/sha256.c password/password.c -o $@
+	$(CC) $(CFLAGS) -DIS_ENCRYPTION_FLAG=1 executable.c aes256/aes256.c sha256/sha256.c password/password.c -o $@
 
 decrypt:
-	$(CC) $(CFLAGS) decrypt.c aes256/aes256.c sha256/sha256.c password/password.c -o $@
+	$(CC) $(CFLAGS) -DIS_ENCRYPTION_FLAG=0 executable.c aes256/aes256.c sha256/sha256.c password/password.c -o $@
 
 clean:
 	rm -rf *.o encrypt decrypt *~ encrypt.dSYM/ decrypt.dSYM/ .deps/ encrypted.txt expected.txt aes256/*~ sha256/*~ password/*~ include/*~
